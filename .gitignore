@@ -1,17 +1,4 @@
-# Do NOT upload secrets
-.env
-
-# Python cache
+﻿.env
 __pycache__/
 *.pyc
-
-# Logs
-*.log
-
-# Temporary files
-*.tmp
-*.temp
-
-# Playwright files
-playwright-report/
-test-results/
+venv/
