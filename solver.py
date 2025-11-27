@@ -1,5 +1,4 @@
-# solver.py  (synchronous, no Playwright)
-
+# solver.py  (synchronous, requests + BeautifulSoup; no external LLM)
 import time
 import logging
 import re
@@ -22,13 +21,6 @@ from utils import (
     safe_json_parse,
 )
 from llm_agent import ask_llm_for_action
-
-# audio
-import openai
-
-OPENAI_KEY = os.getenv("OPENAI_API_KEY")
-if OPENAI_KEY:
-    openai.api_key = OPENAI_KEY
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("solver")
@@ -137,14 +129,14 @@ def _solve_quiz_chain(initial_url: str, email: str, secret: str, deadline: float
             logger.info("Found scrape instruction -> visiting %s", scrape_url)
             secret_code = scrape_secondary_page(scrape_url)
 
-        # 4) detect audio URL
+        # 4) detect audio URL (we do not support transcription here; just detect)
         audio_url = detect_audio_url(page_text, pre_text)
         audio_transcript = None
         if audio_url:
-            logger.info("Detected audio URL: %s", audio_url)
-            audio_transcript = transcribe_audio(audio_url)
+            logger.info("Detected audio URL: %s (no transcription available in this local build)", audio_url)
+            audio_transcript = None  # transcription not available without external STT
 
-        # 5) decide action (heuristics + optional LLM)
+        # 5) decide action (heuristics + optional local agent)
         question_spec = parse_question_text(page_text, pre_text)
         if question_spec.get("action") == "return_text" or question_spec.get("action") is None:
             llm_spec = None
@@ -250,7 +242,7 @@ def detect_submit_url(page_text: str, pre_text: str, current_url: str) -> Option
 
 def detect_file_url(page_text: str, pre_text: str) -> Optional[str]:
     content = (pre_text or "") + "\n" + (page_text or "")
-    m = re.search(r"https?://[^\s'\"<>]+\.(csv|pdf|xlsx|xls|json|wav|mp3)", content, flags=re.I)
+    m = re.search(r"https?://[^\s'\"<>]+\.(csv|pdf|xlsx|xls|json|wav|mp3|m4a|ogg)", content, flags=re.I)
     return m.group(0) if m else None
 
 
@@ -286,36 +278,11 @@ def detect_audio_url(page_text: str, pre_text: str) -> Optional[str]:
 
 
 def transcribe_audio(audio_url: str) -> Optional[str]:
-    try:
-        r = requests.get(audio_url, timeout=30)
-        if not r.ok:
-            logger.error("Audio download failed: %s", r.status_code)
-            return None
-        audio_bytes = r.content
-    except Exception as e:
-        logger.error("Audio fetch error: %s", e)
-        return None
-
-    # Prefer OpenAI speech-to-text if API key present
-    if OPENAI_KEY:
-        try:
-            import tempfile
-            tf = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-            tf.write(audio_bytes)
-            tf.flush()
-            tf.close()
-            with open(tf.name, "rb") as f:
-                resp = openai.Audio.transcribe("gpt-4o-transcribe", f)
-                txt = None
-                if isinstance(resp, dict):
-                    txt = resp.get("text") or resp.get("transcription") or None
-                else:
-                    txt = getattr(resp, "text", None)
-                return txt
-        except Exception as e:
-            logger.exception("OpenAI audio transcribe failed: %s", e)
-
-    # Fallback: just say we couldn't transcribe
+    """
+    Transcription is disabled in this local build (no external STT).
+    If you later add an STT provider, implement it here.
+    """
+    logger.info("transcribe_audio called but no STT provider configured.")
     return None
 
 
