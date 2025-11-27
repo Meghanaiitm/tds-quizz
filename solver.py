@@ -213,23 +213,46 @@ def _solve_quiz_chain(initial_url: str, email: str, secret: str, deadline: float
 
 # ----------------- helpers -----------------
 
-def detect_submit_url(page_text, pre_text, current_url) -> Optional[str]:
+def detect_submit_url(page_text: str, pre_text: str, current_url: str) -> Optional[str]:
     content = (pre_text or "") + "\n" + (page_text or "")
 
+    # 1. Absolute URLs containing /submit
     m = re.search(r"https?://[^\s'\"<>]+/submit[^\s'\"<>]*", content, flags=re.I)
     if m:
         return m.group(0)
 
-    m = re.search(r"https?://[^\s'\"<>]+/(submit|post|answer)[^\s'\"<>]*", content, flags=re.I)
+    # 2. Absolute URLs with patterns submit/post/answer
+    m = re.search(r"https?://[^\s'\"<>]+/(submit|post|answer|api)[^\s'\"<>]*", content, flags=re.I)
     if m:
         return m.group(0)
 
-    m = re.search(r"(^|[^A-Za-z])(\/submit[^\s'\"<>]*)", content, flags=re.I)
+    # 3. Relative /submit
+    m = re.search(r"(['\"])(\/submit[^\s'\"<>]*)\1", content)
     if m:
         from urllib.parse import urljoin
         return urljoin(current_url, m.group(2))
 
+    # 4. JSON-like hidden fields
+    m = re.search(r'"submit_url"\s*:\s*"([^"]+)"', content, flags=re.I)
+    if m:
+        from urllib.parse import urljoin
+        return urljoin(current_url, m.group(1))
+
+    # 5. URL inside JS variables
+    m = re.search(r"var\s+submitUrl\s*=\s*['\"]([^'\"]+)['\"]", content)
+    if m:
+        from urllib.parse import urljoin
+        return urljoin(current_url, m.group(1))
+
+    # 6. Fallback: ANY URL on same domain containing keyword "submit"
+    domain = current_url.split("/")[2]
+    m = re.findall(r"https?://" + re.escape(domain) + r"[^\s'\"<>]+", content)
+    for url in m:
+        if "submit" in url.lower():
+            return url
+
     return None
+
 
 
 def detect_file_url(page_text, pre_text):
